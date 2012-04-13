@@ -51,6 +51,9 @@ typedef struct fos {
     // prob of seeing _x with FoS _fos
 #define PSI(_x, _fos) ((_fos).fp + (1-(_fos).fn-(_fos).fp)*(gsl_cdf_gaussian_Q((_x)-(_fos).threshold, (_fos).slope)))
 
+   // name of prior file to read if priorFlag == 0
+#define PRIOR_FILENAME "buss_prior.txt"
+
    // random numbers
 gsl_rng *rng;
 
@@ -153,6 +156,34 @@ prior5(char t1, char t2, int topLevel) {
 }//prior5()
 
 /*
+** Read weights, one per line, into prior.
+** Normalisation not performed.
+** Checkes that there is the right number of weights.
+*/
+void
+readPriorFile(const char *filename, Prob *prior) {
+   #define BUFF_SIZE 128
+   char buff[BUFF_SIZE];
+   FILE *file = fopen(filename, "r");
+   if (file == NULL) {
+      fprintf(stderr,"Cannot open file %s for reading\n",filename);
+      exit(-1);
+   }
+
+   int i = 0;
+   while (fgets(buff, BUFF_SIZE, file) != NULL) {
+      if (i >= domain) {
+         fprintf(stderr,"Too many lines in %s. Expected %d.\n",filename,domain);
+         exit(-1);
+      }
+      sscanf(buff, "%f", &prior[i++]);
+   }
+
+   fclose(file);
+}//readPriorFile()
+
+
+/*
 ** Create the prior so it sits around 
 ** p == 1 is uniform prior
 ** p == 2 is "tri level" (same/diff-by-1/diff-by-many)
@@ -160,7 +191,12 @@ prior5(char t1, char t2, int topLevel) {
 void
 makePrior(int p) {
     prior = (Prob *)smalloc(sizeof(Prob) * domain);
-    if (p == 1) {
+    if (p == 0) {
+        printf("\n*********************************************************************\n");
+        printf("WARNING: Be careful that your tree file is correct when using prior==0!");
+        printf("\n*********************************************************************\n");
+        readPriorFile(PRIOR_FILENAME, prior);
+    } else if (p == 1) {
         for(int i = 0 ; i < domain ; i++)
             prior[i] = (Prob)1 / (Prob)domain;
     } else if (p == 2) {
@@ -244,7 +280,7 @@ makePrior(int p) {
     }
 
         // normalise for all but p==1
-    if (p > 1) {
+    if (p != 1) {
         Prob sum = (Prob)0;
         for(int i = 0 ; i < domain ; i++)
             sum += prior[i];
@@ -254,7 +290,8 @@ makePrior(int p) {
 //if (prior[i] < 0) {
 //char t1 = digits[i][0];
 //char t2 = digits[i][1];
-//printf("%2d %2d %20.18f\n",t1,t2,prior[i]);
+//char t3 = digits[i][2];
+//printf("%2d %2d %2d %20.18f\n",t1,t2,t3,prior[i]);
 //}
 }
     }
@@ -626,7 +663,8 @@ main(int argc, char *argv[])  {
     if ((argc < 15) || processCommandLine(argc, argv)) {
         fprintf(stderr, "Usage %s num-trials num-locs num-dB {dBs}+ {true-thresh slope fp fn}+ priorFlag lfFlag stopType stopVal maxDepth {w|n} [v]\n",argv[0]);
         fprintf(stderr, "   where\n");
-        fprintf(stderr, "       priorNum = 1 - uniform pdf\n");
+        fprintf(stderr, "       priorNum = 0 - Read prior from file %s\n", PRIOR_FILENAME);
+        fprintf(stderr, "                = 1 - uniform pdf\n");
         fprintf(stderr, "                = 2 - tri-level pdf with abs diff in thresh {>1, 1, 0} weighted as {1,2,4}\n");
         fprintf(stderr, "                = 3 - skew normal pdf - warning has some probs == 0 \n");
         fprintf(stderr, "                = 4 - quad-linear with dynamic peak (hence (0,0) dominates)!\n");
