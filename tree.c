@@ -17,7 +17,11 @@
 #include "tree.h"
 
 // helper for makeTree()
-void initNode(void *pp) { TreeNode *p = (TreeNode *)pp; p->valid = TREE_NODE_INVALID; p->yes = p->no = p->parent = TREE_NULL; }
+void initNode(void *pp) { 
+   TreeNode *p = (TreeNode *)pp; 
+   p->valid = TREE_NODE_INVALID; 
+   p->yes = p->no = p->parent = TREE_NULL; 
+}
 
 /*
 ** Allocate all memory, etc
@@ -29,8 +33,8 @@ makeTree(int n, int d, int *dbValues, char pType, char lfType, char stopT, doubl
     t->numLocations = n;
     t->numDbValues  = d;
 
-    t->nodes  = chunkCreate(sizeof(TreeNode),         TREE_INITIAL_NUM_NODES , initNode);
-    t->leaves = chunkCreate(sizeof(float) * n,        TREE_INITIAL_NUM_LEAVES, NULL);
+    t->nodes  = chunkCreate(sizeof(TreeNode),  TREE_INITIAL_NUM_NODES , initNode);
+    t->leaves = chunkCreate(sizeof(float) * n, TREE_INITIAL_NUM_LEAVES, NULL);
 
     t->priorType  = pType;     
     t->lfType     = lfType;        
@@ -82,7 +86,7 @@ treeMakeOrLoad(uint n, uint d, int *dbValues, char pType, char lfType, char stop
     char *filename = makeFilename(n, d, dbValues, pType, lfType, stopT, stopV, maxD);
     FILE *f = fopen(filename, "r");
     if (f == NULL)
-        t= makeTree(n, d, dbValues, pType, lfType, stopT, stopV, maxD);
+        t = makeTree(n, d, dbValues, pType, lfType, stopT, stopV, maxD);
     else {
         fclose(f);
         t = treeLoad(filename);

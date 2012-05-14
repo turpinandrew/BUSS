@@ -6,6 +6,7 @@ CC=g++
 #CFLAGS= -Wall -O9 -funroll-loops -L c:/Program\ Files\ \(x86\)/GnuWin32/lib -I c:/Program\ Files\ \(x86\)/GnuWin32/include -static -Wl,--stack,500000000
 CFLAGS= -Wall -O9 -funroll-loops
 #CFLAGS= -Wall -O3 -funroll-loops
+#CFLAGS= -Wall -g
 
 OBJ= main.o smalloc.o tree.o chunk.o
 

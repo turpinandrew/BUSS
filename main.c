@@ -18,6 +18,7 @@
 ** Modified Thu 10 Mar 2011: Remove pdfs from tree and regen on demand.
 ** Modified April 2012:      Added bimodal pdfs as priors
 **                           Removed insistance on not presenting at same location twice in a row.
+** Modified May 2012:        Fixed bug that didn't initialise kids to NULL in makeNewNode
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -588,6 +589,8 @@ makeNewNode(int location, int dbIndex, Prob *pdf, char nodeType, int depth, uint
         node->location = location;
         node->dbIndex  = dbIndex;
         node->type     = nodeType;
+        node->yes      = TREE_NULL;
+        node->no       = TREE_NULL;
 //fprintf(stderr,"Stim: %d %d type=%s\n",location,dbIndex,nodeType == TREE_NODE_TYPE_NO_PDF ? "no" : "yes");
     }
 
@@ -613,7 +616,6 @@ buss(int *n) {
     for(;;) {
         // assert: now currTreeNode is a valid node
         TreeNode *currTptr = TO_N_PTR(currTreeNode);
-//printf("currTptr = TO_(%d)\n",currTreeNode);fflush(stdout);
         if (currTptr->type == TREE_NODE_TYPE_LEAF) {
             return (float *)chunkGet(tree->leaves, currTptr->data);
         } else {
@@ -638,14 +640,12 @@ buss(int *n) {
                 makePdf(currTreeNode, pdf);
             
                 if (currTptr->no == TREE_NULL) {      // note makeNewNode might move currTreeNode in mem, so use temp = ...
-                    uint temp = makeNewNode(location, dbIndex, pdf, TREE_NODE_TYPE_NO_PDF, depth, currTreeNode, verbose &&
-!seen);
+                    uint temp = makeNewNode(location, dbIndex, pdf, TREE_NODE_TYPE_NO_PDF, depth, currTreeNode, verbose && !seen);
                     TO_N_PTR(currTreeNode)->no = temp;
                 }
 
                 if (TO_N_PTR(currTreeNode)->yes == TREE_NULL) {
-                    uint temp = makeNewNode(location, dbIndex, pdf, TREE_NODE_TYPE_YES_PDF, depth, currTreeNode, verbose &&
-seen);
+                    uint temp = makeNewNode(location, dbIndex, pdf, TREE_NODE_TYPE_YES_PDF, depth, currTreeNode, verbose && seen);
                     TO_N_PTR(currTreeNode)->yes = temp;
                 }
 
