@@ -168,7 +168,7 @@ treeSave(Tree *t) {
     //fl.l_len    = 0;        /* length, 0 = to EOF           */
     //fl.l_pid    = getpid(); /* our PID                      */
     
-    int f = open(filename, O_WRONLY | O_CREAT); // , S_IRWXU);
+    int f = open(filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
     if (f == -1) {
         perror("open tree file:");
         return;
