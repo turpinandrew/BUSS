@@ -41,6 +41,7 @@ typedef float Prob; // in case I want double later...
 
 typedef struct moments { 
     Prob mean, sd, H;
+    unsigned int numNonZero;
 } MomentType; 
 
 typedef struct fos { 
@@ -94,6 +95,7 @@ Prob *workArea3; // for creating pdf when calling makePdf()
 char stopStdev(Prob *pdf, int depth)   ;
 char stopEntropy(Prob *pdf, int depth) ;
 char stopNumPres(Prob *pdf, int depth) ;
+char stopPartialStdev(Prob *pdf, int depth) ;
 
 /*
 ** Return a LUT lf[stimIndex, trueThreshIndex] 
@@ -345,6 +347,8 @@ processCommandLine(int argc,char *argv[]) {
         stopFunction = stopNumPres;
     else if (stopType == 'S')
         stopFunction = stopStdev;
+    else if (stopType == 'P')
+        stopFunction = stopPartialStdev;
     else {
         fprintf(stderr,"Invalid stopType %c\n", stopType);
         return 1;
@@ -402,16 +406,19 @@ processCommandLine(int argc,char *argv[]) {
 void
 moments(Prob *pdf, MomentType *m) {
     Prob sum=0, sumSq=0, H=0;
+    unsigned int numNonZero = 0;
     for(int i = 0 ; i < domain ; i++) 
         if (pdf[i] > 0) {
             sum   += pdf[i] * i;
             sumSq += pdf[i] * i * i;
             H     += ENTROPY(pdf[i]);
+            numNonZero++;
         }
 
-    m->mean = sum;
-    m->sd   = sqrt(sumSq - sum*sum);
-    m->H    = H;
+    m->mean       = sum;
+    m->sd         = sqrt(sumSq - sum*sum);
+    m->H          = H;
+    m->numNonZero = numNonZero;
 }// moments()
 
 /*
@@ -464,28 +471,52 @@ makePdf(uint tp, Prob *pdf) {
 }//makePdf()
 
 /*
+** Compute the expected set of db values, one for each location.
+** ASSUMES answer has room [0..numLocations-1].
+**
+** Tue Jul 31 15:57:56 EST 2012: Added secondAnswer to hold variances.
+**                               Can be NULL.
+*/
+void
+expectedSample(Prob *pdf, float *answer, float *secondAnswer) {
+    for(int i = 0 ; i < numberOfLocations ; i++) {
+        answer[i] = 0;
+        if (secondAnswer != NULL) secondAnswer[i] = 0;
+    }
+
+    for(int i = 0 ; i < domain ; i++) {
+        for(int j = 0 ; j < numberOfLocations ; j++) {
+            answer[j] += pdf[i] * dbValues[(int)digits[i][j]];
+            if (secondAnswer != NULL) secondAnswer[j] += pdf[i] * dbValues[(int)digits[i][j]] * dbValues[(int)digits[i][j]];
+        }
+    }
+
+    if (secondAnswer != NULL) 
+        for(int i = 0 ; i < numberOfLocations ; i++) 
+            secondAnswer[i] -= answer[i] * answer[i];
+
+    return;
+}//expectedSample()
+
+
+/*
 ** Return true if stop, false otherwise
 */
 char stopStdev(Prob *pdf, int depth)   { MomentType m; moments(pdf, &m); return m.sd <= stopValue; }
 char stopEntropy(Prob *pdf, int depth) { MomentType m; moments(pdf, &m); return m.H <= stopValue;  }
 char stopNumPres(Prob *pdf, int depth) { return depth >= stopValue; }
+char stopPartialStdev(Prob *pdf, int depth) { 
+    float *junk     = (float *)malloc(sizeof(float) * numberOfLocations);
+    float *pVars = (float *)malloc(sizeof(float) * numberOfLocations); // partial variances
+    expectedSample(pdf, junk, pVars);
+    char stop = 1;
+    for(int i = 0 ; i < numberOfLocations && stop ; i++)
+        stop = pVars[i] <= stopValue * stopValue;
 
-/*
-** Compute the expected set of db values, one for each location.
-** ASSUMES answer has room [0..numLocations-1].
-*/
-void
-expectedSample(Prob *pdf, float *answer) {
-    for(int i = 0 ; i < numberOfLocations ; i++)
-        answer[i] = 0;
-
-    for(int i = 0 ; i < domain ; i++) {
-        for(int j = 0 ; j < numberOfLocations ; j++) {
-            answer[j] += pdf[i] * dbValues[(int)digits[i][j]];
-        }
-    }
-    return;
-}//expectedSample()
+    free(junk); 
+    free(pVars);
+    return stop;
+}
 
 /*
 ** Choose a stimulus
@@ -565,7 +596,15 @@ makeNewNode(int location, int dbIndex, Prob *pdf, char nodeType, int depth, uint
     if (printMoments) {
         MomentType m;
         moments(newPdf, &m);
-        printf("# Moments:  %9.3f %9.3f %9.3f\n",m.mean,m.sd,m.H);
+        printf("# Moments:  m=%9.3f sd=%9.3f H=%9.3f nz=%10d ",m.mean,m.sd,m.H,m.numNonZero);
+
+        float *firstMoments  = (float *)malloc(sizeof(float) * numberOfLocations);
+        float *pVars = (float *)malloc(sizeof(float) * numberOfLocations);
+        expectedSample(newPdf, firstMoments, pVars);
+        for(int i = 0 ; i < numberOfLocations ; i++)
+            printf("sd%d=%9.3f ", i, sqrt(pVars[i]));
+        printf("\n");
+        free(firstMoments); free(pVars);
     }
     
     uint ptr;
@@ -579,7 +618,7 @@ makeNewNode(int location, int dbIndex, Prob *pdf, char nodeType, int depth, uint
     if (depth == maxDepth || stopFunction(newPdf, depth)) {
         uint dataPtr;
         float *temp = (float *)chunkGetNext(tree->leaves, &dataPtr);
-        expectedSample(pdf, temp);
+        expectedSample(pdf, temp, NULL);
         node->type  = TREE_NODE_TYPE_LEAF;
         node->data = dataPtr;
 //fprintf(stderr,"Leaf\n");
@@ -674,7 +713,7 @@ main(int argc, char *argv[])  {
         fprintf(stderr, "                = 20..60 - bimodal pdf with normal mode at value-20\n");
         fprintf(stderr, "                     (eg 20==0dB, 30==10dB)\n");
         fprintf(stderr, "       lfNum    = 1 - Henson -0.098 & 3.62 capped at 1.0, fp=fn=3%%\n");
-        fprintf(stderr, "    stopType    = H | N | S\n");
+        fprintf(stderr, "    stopType    = H | N | S | P\n");
         fprintf(stderr, "       {w|n} w == rewrite tree file at end if tree changed, n == do not rewrite tree file\n");
         fprintf(stderr, "       v == verbose (optional) \n");
         return -1;
